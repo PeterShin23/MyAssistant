@@ -19,21 +19,6 @@ A CLI tool that captures your **screen** and **microphone input**, then saves th
 
 * Go 1.20 or later
 
-### Dependencies
-
-#### macOS:
-
-```bash
-brew install portaudio ffmpeg
-```
-
-#### Ubuntu/Debian:
-
-```bash
-sudo apt update
-sudo apt install portaudio19-dev ffmpeg
-```
-
 ---
 
 ## 🚀 Usage
@@ -41,14 +26,14 @@ sudo apt install portaudio19-dev ffmpeg
 ### Run without building:
 
 ```bash
-go run ./cmd/desktopassistant --duration 5
+go run ./cmd/assistant
 ```
 
 ### Build a binary:
 
 ```bash
-go build -o ./bin/desktopassistant ./cmd/desktopassistant
-./bin/desktopassistant --duration 5
+go build -o ./bin/myassistant ./cmd/assistant
+./bin/myassistant
 ```
 
 ---
@@ -109,5 +94,3 @@ rm -rf bin/ audio.wav capture.png .data/
 ```bash
 export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
 ```
-
-* Compatible with macOS and Linux (x86/ARM).
