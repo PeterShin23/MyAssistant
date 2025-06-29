@@ -15,6 +15,9 @@ A CLI tool that captures your **screen** and **microphone input**, then saves th
 
 ## 📦 Requirements
 
+brew install portaudio
+brew install ffmpeg
+
 ### Golang
 
 * Go 1.20 or later
@@ -94,3 +97,20 @@ rm -rf bin/ audio.wav capture.png .data/
 ```bash
 export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
 ```
+
+# Troubleshoot
+
+1. Accessibility API disabled
+
+```
+hook_run [1284]: Accessibility API is disabled!
+Failed to enable access for assistive devices. (0X40)
+```
+
+Open System Settings → Privacy & Security → Accessibility
+
+Click the + button and add your terminal (e.g., iTerm or Terminal)
+
+Ensure the checkbox is checked
+
+Restart the terminal after doing this
