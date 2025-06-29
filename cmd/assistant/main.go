@@ -6,11 +6,23 @@ import (
 	"path/filepath"
 
 	"github.com/PeterShin23/MyAssistant/internal/key"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
 // To Run: go run ./cmd/assistant
 func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("No .env file found. Exiting")
+		os.Exit(1)
+	}
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		fmt.Println("No OPENAI_API_KEY configured. Exiting")
+		os.Exit(1)
+	}
+
 	fmt.Println("⌨️ Waiting for configured key hold")
 
 	var rootCmd = &cobra.Command{

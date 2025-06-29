@@ -4,6 +4,7 @@ go 1.23.1
 
 require (
 	github.com/gordonklaus/portaudio v0.0.0-20250206071425-98a94950218b
+	github.com/joho/godotenv v1.5.1
 	github.com/robotn/gohook v0.42.2
 	github.com/spf13/cobra v1.9.1
 )

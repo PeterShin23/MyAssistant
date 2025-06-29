@@ -2,66 +2,108 @@ package key
 
 import (
 	"fmt"
-	"os"
+	"sync"
 	"time"
 
 	"github.com/PeterShin23/MyAssistant/internal/audio"
+	"github.com/PeterShin23/MyAssistant/internal/openai"
 	"github.com/PeterShin23/MyAssistant/internal/screen"
 	hook "github.com/robotn/gohook"
 )
 
 var (
-	maxDuration   = 20 * time.Second
-	hotKeyPressed = false
+	maxDuration        = 5 * time.Second
+	isRunning          = false
+	awaitingKeyRelease = false
+	mu                 sync.Mutex
+	screenshotPath     string
+	audioPath          string
 )
 
 func StartKeyListener() error {
-	fmt.Println("Listening...")
+	fmt.Println("🎧 Listening for key...")
 
 	evChan := hook.Start()
 	defer hook.End()
 
 	for ev := range evChan {
-		if ev.Kind == hook.KeyDown && ev.Rawcode == 50 && !hotKeyPressed {
-			hotKeyPressed = true
+		if ev.Rawcode != 50 {
+			continue // only handle backtick
+		}
 
-			go func() {
-				if err := screen.CaptureScreenshot(); err != nil {
-					fmt.Println("Screenshot failed", err)
-				}
-			}()
-
-			go func() {
-				if err := audio.StartRecording(); err != nil {
-					fmt.Println("Failed to begin recording...", err)
-				}
-			}()
-
-			go func() {
-				time.Sleep(maxDuration)
-				if hotKeyPressed {
-					hotKeyPressed = false
-					fmt.Println("⏱️ Max recording duration reached.")
-
-					if err := audio.StopRecording(); err != nil {
-						fmt.Println("Failed to stop recording...", err)
-					}
-
-					fmt.Println("✅ Finished recording. Entering processing phase...")
-					os.Exit(0)
-				}
-			}()
-		} else if ev.Kind == hook.KeyUp && ev.Rawcode == 50 && hotKeyPressed {
-			hotKeyPressed = false
-
-			if err := audio.StopRecording(); err != nil {
-				fmt.Println("Failed to stop recording...", err)
+		switch ev.Kind {
+		case hook.KeyDown:
+			mu.Lock()
+			if !isRunning && !awaitingKeyRelease {
+				isRunning = true
+				mu.Unlock()
+				go handleStart()
+			} else {
+				mu.Unlock()
 			}
 
-			fmt.Println("✅ Finished recording. Entering processing phase...")
-			os.Exit(0)
+		case hook.KeyUp:
+			mu.Lock()
+			if isRunning {
+				mu.Unlock()
+				go handleStop("🔑 Key released")
+			} else if awaitingKeyRelease {
+				awaitingKeyRelease = false
+				mu.Unlock()
+			} else {
+				mu.Unlock()
+			}
 		}
 	}
 
 	return nil
+}
+
+func handleStart() {
+	go func() {
+		if path, err := screen.CaptureScreenshot(); err != nil {
+			fmt.Println("❌ Screenshot failed:", err)
+		} else {
+			mu.Lock()
+			screenshotPath = path
+			mu.Unlock()
+		}
+	}()
+
+	go func() {
+		if err := audio.StartRecording(); err != nil {
+			fmt.Println("❌ Failed to start recording:", err)
+		}
+	}()
+
+	// Auto-stop after max duration
+	go func() {
+		time.Sleep(maxDuration)
+		handleStop("⏱️ Max duration reached")
+	}()
+}
+
+func handleStop(reason string) {
+	mu.Lock()
+	if !isRunning {
+		mu.Unlock()
+		return
+	}
+	isRunning = false
+	awaitingKeyRelease = true
+	mu.Unlock()
+
+	path, err := audio.StopRecording()
+	if err != nil {
+		fmt.Println("❌ Failed to stop recording:", err)
+	}
+
+	mu.Lock()
+	audioPath = path
+	mu.Unlock()
+
+	fmt.Println(reason)
+	fmt.Println("✅ Finished recording. Entering processing phase...")
+
+	go openai.Process(screenshotPath, audioPath)
 }

@@ -14,9 +14,15 @@ A CLI tool that captures your **screen** and **microphone input**, then saves th
 ---
 
 ## 📦 Requirements
+* `portaudio` and `ffmpeg` must be installed system-wide.
+* For macOS ARM (M1/M2), you may need:
 
+```bash
 brew install portaudio
 brew install ffmpeg
+
+export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
+```
 
 ### Golang
 
@@ -54,51 +60,7 @@ Create a `rules.json` file at the project root:
 
 ---
 
-## 📁 Output
-
-* `.data/payload_<timestamp>.json` – JSON with base64-encoded screenshot & audio
-* `capture.png` – PNG screenshot
-* `audio.wav` – Raw microphone input
-
----
-
-## 🧱 Project Structure
-
-```
-DesktopAssistant/
-├── cmd/desktopassistant/main.go        # CLI entrypoint
-├── internal/audio/mic.go               # Mic recording logic
-├── internal/screen/capture.go          # Screenshot logic
-├── internal/config/rules.go            # Config loader
-├── internal/storage/store.go           # Payload builder/saver
-├── rules.json                          # Optional config
-├── .data/                              # Captured sessions
-```
-
----
-
-## 🛠 Dev Commands
-
-```bash
-# Format code
-go fmt ./...
-
-# Clean artifacts
-rm -rf bin/ audio.wav capture.png .data/
-```
-
----
-
-## 📌 Notes
-
-* `portaudio` and `ffmpeg` must be installed system-wide.
-* For macOS ARM (M1/M2), you may need:
-
-```bash
-export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
-```
-
-# Troubleshoot
+## Troubleshoot
 
 1. Accessibility API disabled
 

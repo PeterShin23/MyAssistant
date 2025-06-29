@@ -71,13 +71,13 @@ func StartRecording() error {
 }
 
 
-func StopRecording() error {
+func StopRecording() (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
 	// Do nothing, if it's already stopped
 	if !recording {
-		return nil
+		return "", nil
 	}
 
 	recording = false
@@ -87,26 +87,27 @@ func StopRecording() error {
 
 	// Ensure .data directory exists
 	if err := os.MkdirAll(filepath.Dir(outputPath), FOLDER_PERMS_READALL_WRITEOWN); err != nil {
-		return fmt.Errorf("failed to create .data directory: %w", err)
+		return "", fmt.Errorf("failed to create .data directory: %w", err)
 	}
 	
 	file, err := os.Create(outputPath)
 	if err != nil {
-		return fmt.Errorf("Failed to create wav file: %w", err)
+		return "", fmt.Errorf("Failed to create wav file: %w", err)
 	}
 	defer file.Close()
 
 	writeWavHeader(file, len(buffer))
 
 	if err := binary.Write(file, binary.LittleEndian, buffer); err != nil {
-		return fmt.Errorf("Failed to write wav data: %w", err)
+		return "", fmt.Errorf("Failed to write wav data: %w", err)
 	}
 
-	if err := convertWavToMp3(outputPath); err != nil {
-		return fmt.Errorf("mp3 conversion failed: %w", err)
+	mp3Path, err := convertWavToMp3(outputPath)
+	if err != nil {
+		return "", fmt.Errorf("mp3 conversion failed: %w", err)
 	}
 
-	return nil
+	return mp3Path, nil
 }
 
 func writeWavHeader(f *os.File, sampleCount int) {
@@ -125,12 +126,16 @@ func writeWavHeader(f *os.File, sampleCount int) {
 	binary.Write(f, binary.LittleEndian, uint32(dataSize))
 }
 
-func convertWavToMp3(wavPath string) error {
+func convertWavToMp3(wavPath string) (string, error) {
 	mp3Path := strings.Replace(wavPath, ".wav", ".mp3", 1)
 
 	cmd := exec.Command("ffmpeg", "-y", "-i", wavPath, "-codec:a", "libmp3lame", "-qscale:a", "2", mp3Path)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
-	return cmd.Run()
+	if err:= cmd.Run(); err != nil {
+		return "", err
+	}
+
+	return mp3Path, nil
 }
