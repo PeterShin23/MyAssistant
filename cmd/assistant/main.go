@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/PeterShin23/MyAssistant/internal/key"
 	"github.com/spf13/cobra"
@@ -12,12 +13,16 @@ import (
 func main() {
 	fmt.Println("⌨️ Waiting for configured key hold")
 
-	rootCmd := &cobra.Command{
+	var rootCmd = &cobra.Command{
 		Use:   "assistant",
 		Short: "MyAssistant CLI - your personal screen/audio capture tool",
+	}
+
+	var listenCmd = &cobra.Command{
+		Use:   "listen",
+		Short: "Start listening for hotkey press",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("👋 Let's get to work!")
-
 			if err := key.StartKeyListener(); err != nil {
 				fmt.Println("Key Listener failed:", err)
 				os.Exit(1)
@@ -25,8 +30,39 @@ func main() {
 		},
 	}
 
-	if error := rootCmd.Execute(); error != nil {
-		fmt.Println("Error", error)
+	var clearCmd = &cobra.Command{
+		Use:   "clear",
+		Short: "Delete all files in the .data folder",
+		Run: func(cmd *cobra.Command, args []string) {
+			err := clearDataFolder(".data")
+			if err != nil {
+				fmt.Println("Failed to clear .data:", err)
+				os.Exit(1)
+			}
+			fmt.Println("🧹 Cleared all files in .data/")
+		},
+	}
+
+	rootCmd.AddCommand(listenCmd)
+	rootCmd.AddCommand(clearCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
+}
+
+func clearDataFolder(folder string) error {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(folder, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
