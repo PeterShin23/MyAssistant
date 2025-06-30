@@ -2,7 +2,6 @@
 
 A CLI tool that captures your **screen** and **microphone input**, then uses that data to predict what you need assistance with.
 
-
 ```bash
 go run ./cmd/assistant listen
 ```
@@ -19,8 +18,9 @@ go run ./cmd/assistant listen
 ---
 
 ## Requirements
+Sorry, but this is MacOS only :(
+
 * `portaudio` and `ffmpeg` must be installed system-wide.
-* For macOS ARM (M1/M2), you may need:
 
 ```bash
 brew install portaudio
