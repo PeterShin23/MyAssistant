@@ -20,6 +20,9 @@ const (
 
 // listener encapsulates the key state and session lifecycle.
 type listener struct {
+	session *openai.Session
+	noAudio bool
+
 	mu        sync.Mutex
 	running   bool        // Is a session currently running
 	keyHeld   bool        // Is the key currently pressed
@@ -31,8 +34,8 @@ type listener struct {
 
 // StartKeyListener launches the listener loop.
 // It waits for backtick being held, and starts a session if held long enough.
-func StartKeyListener() error {
-	l := &listener{}
+func StartKeyListener(session *openai.Session, noAudio bool) error {
+	l := &listener{session: session, noAudio: noAudio}
 
 	fmt.Printf("🎧 Listening: hold backtick ≥ %.0fms to trigger\n", holdThreshold.Seconds()*1000)
 
@@ -113,12 +116,14 @@ func (l *listener) startSession() {
 		}
 	}()
 
-	// Start audio recording in background
-	go func() {
-		if err := audio.StartRecording(); err != nil {
-			fmt.Println("❌ Failed to start audio recording:", err)
-		}
-	}()
+	if !l.noAudio {
+		// Start audio recording in background
+		go func() {
+			if err := audio.StartRecording(); err != nil {
+				fmt.Println("❌ Failed to start audio recording:", err)
+			}
+		}()
+	}
 
 	// Auto-stop after max duration
 	go func() {
@@ -137,17 +142,28 @@ func (l *listener) stopSession(reason string) {
 	l.running = false
 	l.mu.Unlock()
 
-	audioPath, err := audio.StopRecording()
-	if err != nil {
-		fmt.Println("❌ Failed to stop audio recording:", err)
+	if !l.noAudio {
+		audioPath, err := audio.StopRecording()
+		if err != nil {
+			fmt.Println("❌ Failed to stop audio recording:", err)
+		}
+
+		l.mu.Lock()
+		l.audioPath = audioPath
+		l.mu.Unlock()
+
+		fmt.Println(reason)
+	} else {
+		l.mu.Lock()
+		l.audioPath = ""
+		l.mu.Unlock()
 	}
 
-	l.mu.Lock()
-	l.audioPath = audioPath
-	l.mu.Unlock()
+	fmt.Println("✅ Sending to processor...")
 
-	fmt.Println(reason)
-	fmt.Println("✅ Finished recording. Sending to processor...")
-
-	go openai.Process(l.screenshotPath, l.audioPath)
+	go func() {
+		if err := l.session.Process(l.screenshotPath, l.audioPath); err != nil {
+			fmt.Println("❌ Error during OpenAI processing:", err)
+		}
+	}()
 }

@@ -65,11 +65,10 @@ func StartRecording() error {
 		portaudio.Terminate()
 	}()
 
-	fmt.Println("Recording...")
+	fmt.Println("Recording audio...")
 
 	return nil
 }
-
 
 func StopRecording() (string, error) {
 	mu.Lock()
@@ -89,7 +88,7 @@ func StopRecording() (string, error) {
 	if err := os.MkdirAll(filepath.Dir(outputPath), FOLDER_PERMS_READALL_WRITEOWN); err != nil {
 		return "", fmt.Errorf("failed to create .data directory: %w", err)
 	}
-	
+
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return "", fmt.Errorf("Failed to create wav file: %w", err)
@@ -133,7 +132,7 @@ func convertWavToMp3(wavPath string) (string, error) {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
-	if err:= cmd.Run(); err != nil {
+	if err := cmd.Run(); err != nil {
 		return "", err
 	}
 

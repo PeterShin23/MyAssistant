@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/PeterShin23/MyAssistant/internal/key"
+	"github.com/PeterShin23/MyAssistant/internal/openai"
+
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
@@ -30,17 +32,28 @@ func main() {
 		Short: "MyAssistant CLI - your personal screen/audio capture tool",
 	}
 
+	var noAudio bool
+
 	var listenCmd = &cobra.Command{
 		Use:   "listen",
 		Short: "Start listening for hotkey press",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("👋 Let's get to work!")
-			if err := key.StartKeyListener(); err != nil {
+
+			session, err := openai.NewSession()
+			if err != nil {
+				fmt.Println("Failed to create OpenAI session:", err)
+				os.Exit(1)
+			}
+
+			if err := key.StartKeyListener(session, noAudio); err != nil {
 				fmt.Println("Key Listener failed:", err)
 				os.Exit(1)
 			}
 		},
 	}
+
+	listenCmd.Flags().BoolVar(&noAudio, "no-audio", false, "Disable audio recording")
 
 	var clearCmd = &cobra.Command{
 		Use:   "clear",
