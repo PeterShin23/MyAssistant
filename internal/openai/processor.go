@@ -61,20 +61,11 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to prepare image: %w", err)
 	}
-	// 3. Load system prompt from JSON
-	var cfg PromptConfig
-	promptBytes, err := os.ReadFile(rulesJSON)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", rulesJSON, err)
-	}
-	if err := json.Unmarshal(promptBytes, &cfg); err != nil {
-		return fmt.Errorf("failed to parse %s: %w", rulesJSON, err)
-	}
 
-	// 4. Append system message once
+	// Append system message once
 	s.mu.Lock()
 	if len(s.messages) == 0 {
-		var systemPrompt = buildSystemPrompt(cfg)
+		var systemPrompt = buildSystemPrompt()
 
 		s.messages = append(s.messages, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleSystem,
@@ -101,7 +92,6 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 		})
 	}
 
-	// 5. Build user message with image and transcript
 	userMessage := openai.ChatCompletionMessage{
 		Role:         openai.ChatMessageRoleUser,
 		MultiContent: parts,
@@ -149,7 +139,7 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 	return nil
 }
 
-func buildSystemPrompt(r PromptConfig) string {
+func buildSystemPrompt() string {
 	systemPrompt := `You are the user's personal helper. 
 	Use the image and audio transcript provided as context. 
 	Assume that the user needs help with the context that's provided to you.
@@ -158,14 +148,14 @@ func buildSystemPrompt(r PromptConfig) string {
 	void polite or generic statements like "let me know if you have other questions" or "feel free to ask".
 	Only respond with the most relevant, concise, and helpful information.`
 
-	defaultTechincalPrompt := `
-	I need general help with various tasks.
-	`
-
-	// Use technicalPrompt if it's not empty; otherwise use the default
-	technicalPrompt := r.TechnicalPrompt
-	if technicalPrompt == "" {
-		technicalPrompt = defaultTechincalPrompt
+	// Load technical user prompt from JSON
+	technicalPrompt := `I need general help with various tasks.`
+	promptBytes, err := os.ReadFile(rulesJSON)
+	if err == nil {
+		var cfg PromptConfig
+		if err := json.Unmarshal(promptBytes, &cfg); err == nil && cfg.TechnicalPrompt != "" {
+			technicalPrompt = cfg.TechnicalPrompt
+		}
 	}
 
 	return fmt.Sprintf(`%s

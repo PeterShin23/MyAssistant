@@ -1,19 +1,24 @@
 # MyAssistant
 
-A CLI tool that captures your **screen** and **microphone input**, then saves the data locally in `.data/` for later use (such as LLM processing).
+A CLI tool that captures your **screen** and **microphone input**, then uses that data to predict what you need assistance with.
+
+
+```bash
+go run ./cmd/assistant listen
+```
 
 ---
 
-## ✅ Features
+## Features
 
-* 📸 Captures screenshot of the primary display
-* 🎤 Records mic input for a configurable duration
-* 🧠 Loads optional `rules.json` for contextual metadata
-* 💾 Saves base64-encoded audio & screenshot in `.data/`
+* Captures screenshot of the primary display
+* Records mic input for a configurable duration
+* Loads optional `rules.json` for contextual metadata
+* Saves base64-encoded audio & screenshot in `.data/`
 
 ---
 
-## 📦 Requirements
+## Requirements
 * `portaudio` and `ffmpeg` must be installed system-wide.
 * For macOS ARM (M1/M2), you may need:
 
@@ -24,45 +29,51 @@ brew install ffmpeg
 export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
 ```
 
+### .env
+
+* Must have OPENAI_API_KEY - Follow `.env.template`
+
 ### Golang
 
 * Go 1.20 or later
 
 ---
 
-## 🚀 Usage
-
-### Run without building:
-
-```bash
-go run ./cmd/assistant
-```
-
-### Build a binary:
-
-```bash
-go build -o ./bin/myassistant ./cmd/assistant
-./bin/myassistant
-```
-
----
-
-## ⚙️ Configuration (Optional)
+## Configuration
 
 Create a `rules.json` file at the project root:
 
 ```json
 {
-  "context": "You're helping me troubleshoot CLI issues.",
-  "max_tokens": 300
+  "whatDoYouNeedHelpWith": "I'm a software engineer, preparing for interviews.",
+  "display": 1
 }
+```
+
+
+---
+## Usage
+
+### To Run
+```bash
+go run ./cmd/assistant listen
+```
+
+### To Run without MIC (Only screen capture)
+```bash
+go run ./cmd/assistant listen --no-audio
+```
+
+### To clear data saved in .data
+```bash
+go run ./cmd/assistant clear
 ```
 
 ---
 
 ## Troubleshoot
 
-1. Accessibility API disabled
+### Accessibility API disabled
 
 ```
 hook_run [1284]: Accessibility API is disabled!
