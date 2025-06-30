@@ -1,19 +1,25 @@
 # MyAssistant
 
-A CLI tool that captures your **screen** and **microphone input**, then uses that data to predict what you need assistance with.
+An LLM-Powered CLI tool written in Go that takes a screenshot of your computer display and optionally records your mic. Your personal assistant without having to do any more than what you already do.
 
+---
+## Usage
+
+### To Run
 ```bash
 go run ./cmd/assistant listen
 ```
 
----
+### To Run without MIC (Only screen capture)
+```bash
+go run ./cmd/assistant listen --no-audio
+```
 
-## Features
+### To clear data saved in .data
+```bash
+go run ./cmd/assistant clear
+```
 
-* Captures screenshot of the primary display
-* Records mic input for a configurable duration
-* Loads optional `rules.json` for contextual metadata
-* Saves base64-encoded audio & screenshot in `.data/`
 
 ---
 
@@ -48,25 +54,6 @@ Create a `rules.json` file at the project root:
   "whatDoYouNeedHelpWith": "I'm a software engineer, preparing for interviews.",
   "display": 1
 }
-```
-
-
----
-## Usage
-
-### To Run
-```bash
-go run ./cmd/assistant listen
-```
-
-### To Run without MIC (Only screen capture)
-```bash
-go run ./cmd/assistant listen --no-audio
-```
-
-### To clear data saved in .data
-```bash
-go run ./cmd/assistant clear
 ```
 
 ---
