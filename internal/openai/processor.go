@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/gif" // optional: support GIF
 	"image/jpeg"
 	_ "image/png" // support PNG
 	"io"
