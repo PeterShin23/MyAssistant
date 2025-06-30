@@ -6,6 +6,8 @@ An LLM-Powered CLI tool written in Go that takes a screenshot of your computer d
 ## Usage
 
 ### To Run
+Hold down backtick (`) to record. Keep held down if you're also recording audio.
+
 ```bash
 go run ./cmd/assistant listen
 ```
