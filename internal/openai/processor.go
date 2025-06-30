@@ -126,6 +126,8 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 		}
 	}
 
+	fmt.Print("\n\n")
+
 	// Maintain Session Context
 	reply := openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleAssistant,

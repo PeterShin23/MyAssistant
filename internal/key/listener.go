@@ -139,7 +139,7 @@ func (l *listener) stopSession(reason string) {
 		l.mu.Unlock()
 		return
 	}
-	l.running = false
+
 	l.mu.Unlock()
 
 	if !l.noAudio {
@@ -165,5 +165,9 @@ func (l *listener) stopSession(reason string) {
 		if err := l.session.Process(l.screenshotPath, l.audioPath); err != nil {
 			fmt.Println("❌ Error during OpenAI processing:", err)
 		}
+
+		l.mu.Lock()
+		l.running = false
+		l.mu.Unlock()
 	}()
 }
