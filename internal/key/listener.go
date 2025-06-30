@@ -15,7 +15,7 @@ import (
 const (
 	triggerKeyRawcode = 50 // Rawcode for ` (backtick) on macOS
 	holdThreshold     = 700 * time.Millisecond
-	maxDuration       = 5 * time.Second
+	maxDuration       = 20 * time.Second
 )
 
 // listener encapsulates the key state and session lifecycle.
