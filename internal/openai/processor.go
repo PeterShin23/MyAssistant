@@ -1,11 +1,16 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif" // optional: support GIF
+	"image/jpeg"
+	_ "image/png" // support PNG
 	"io"
 	"os"
 	"path/filepath"
@@ -53,13 +58,10 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 	}
 
 	// 2. Read and encode screenshot
-	imgData, err := os.ReadFile(screenshotPath)
+	imgDataURI, err := compressAndEncodeImage(screenshotPath)
 	if err != nil {
-		return fmt.Errorf("failed to read screenshot: %w", err)
+		return fmt.Errorf("Failed to prepare image: %w", err)
 	}
-	imgB64 := base64.StdEncoding.EncodeToString(imgData)
-	imgDataURI := "data:image/png;base64," + imgB64
-
 	// 3. Load system prompt from JSON
 	var cfg PromptConfig
 	promptBytes, err := os.ReadFile(rulesJSON)
@@ -148,22 +150,6 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 	return nil
 }
 
-func (s *Session) transcribeAudio(ctx context.Context, audioPath string) (string, error) {
-	if audioPath == "" {
-		return "", nil
-	}
-
-	req := openai.AudioRequest{
-		Model:    openai.Whisper1,
-		FilePath: audioPath,
-	}
-	resp, err := s.client.CreateTranscription(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	return resp.Text, nil
-}
-
 func buildSystemPrompt(r PromptConfig) string {
 	systemPrompt := `You are the user's personal helper. 
 	Use the image and audio transcript provided as context. 
@@ -186,4 +172,45 @@ func buildSystemPrompt(r PromptConfig) string {
 	return fmt.Sprintf(`%s
 
 	What the user needs help with: %s`, systemPrompt, technicalPrompt)
+}
+
+func (s *Session) transcribeAudio(ctx context.Context, audioPath string) (string, error) {
+	if audioPath == "" {
+		return "", nil
+	}
+
+	req := openai.AudioRequest{
+		Model:    openai.Whisper1,
+		FilePath: audioPath,
+	}
+	resp, err := s.client.CreateTranscription(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Text, nil
+}
+
+func compressAndEncodeImage(path string) (string, error) {
+	// Read the file into memory
+	imgBytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+
+	// Decode image format dynamically
+	img, _, err := image.Decode(bytes.NewReader(imgBytes))
+	if err != nil {
+		return "", err
+	}
+
+	// Compress to JPEG (low quality) in memory
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85}); err != nil {
+		return "", err
+	}
+
+	// Convert to base64 data URI
+	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	dataURI := "data:image/jpeg;base64," + encoded
+	return dataURI, nil
 }
