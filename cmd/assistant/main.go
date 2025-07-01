@@ -33,6 +33,7 @@ func main() {
 	}
 
 	var noAudio bool
+	var pretty bool
 
 	var listenCmd = &cobra.Command{
 		Use:   "listen",
@@ -46,7 +47,7 @@ func main() {
 				os.Exit(1)
 			}
 
-			if err := key.StartKeyListener(session, noAudio); err != nil {
+			if err := key.StartKeyListener(session, noAudio, pretty); err != nil {
 				fmt.Println("Key Listener failed:", err)
 				os.Exit(1)
 			}
@@ -54,6 +55,7 @@ func main() {
 	}
 
 	listenCmd.Flags().BoolVar(&noAudio, "no-audio", false, "Disable audio recording")
+	listenCmd.Flags().BoolVar(&pretty, "pretty", false, "Outputs pretty markdown instead of streamed data")
 
 	var clearCmd = &cobra.Command{
 		Use:   "clear",

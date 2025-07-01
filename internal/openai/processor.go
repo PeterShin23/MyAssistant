@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/charmbracelet/glamour"
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -47,7 +48,7 @@ func NewSession() (*Session, error) {
 	}, nil
 }
 
-func (s *Session) Process(screenshotPath, audioPath string) error {
+func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
 	ctx := context.Background()
 
 	// 1. Transcribe audio using Whisper
@@ -121,12 +122,19 @@ func (s *Session) Process(screenshotPath, audioPath string) error {
 			return fmt.Errorf("stream error: %w", err)
 		}
 		if delta := resp.Choices[0].Delta.Content; delta != "" {
-			fmt.Print(delta)
+			if !pretty {
+				fmt.Print(delta)
+			}
 			fullContent += delta
 		}
 	}
 
-	fmt.Print("\n\n")
+	if pretty {
+		formatted, _ := renderMarkdown(fullContent)
+		fmt.Println(formatted)
+	} else {
+		fmt.Print("\n\n")
+	}
 
 	// Maintain Session Context
 	reply := openai.ChatCompletionMessage{
@@ -204,4 +212,12 @@ func compressAndEncodeImage(path string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
 	dataURI := "data:image/jpeg;base64," + encoded
 	return dataURI, nil
+}
+
+func renderMarkdown(md string) (string, error) {
+	out, err := glamour.Render(md, "dark")
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }

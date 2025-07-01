@@ -22,6 +22,7 @@ const (
 type listener struct {
 	session *openai.Session
 	noAudio bool
+	pretty bool
 
 	mu        sync.Mutex
 	running   bool        // Is a session currently running
@@ -34,8 +35,8 @@ type listener struct {
 
 // StartKeyListener launches the listener loop.
 // It waits for backtick being held, and starts a session if held long enough.
-func StartKeyListener(session *openai.Session, noAudio bool) error {
-	l := &listener{session: session, noAudio: noAudio}
+func StartKeyListener(session *openai.Session, noAudio bool, pretty bool) error {
+	l := &listener{session: session, noAudio: noAudio, pretty: pretty}
 
 	fmt.Printf("🎧 Listening: hold backtick ≥ %.0fms to trigger\n", holdThreshold.Seconds()*1000)
 
@@ -162,7 +163,7 @@ func (l *listener) stopSession(reason string) {
 	fmt.Println("✅ Sending to processor...")
 
 	go func() {
-		if err := l.session.Process(l.screenshotPath, l.audioPath); err != nil {
+		if err := l.session.Process(l.screenshotPath, l.audioPath, l.pretty); err != nil {
 			fmt.Println("❌ Error during OpenAI processing:", err)
 		}
 
