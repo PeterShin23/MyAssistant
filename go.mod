@@ -30,6 +30,7 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/openai/openai-go v1.8.2 // indirect
+	github.com/openai/openai-go/v2 v2.0.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sashabaranov/go-openai v1.40.3 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect

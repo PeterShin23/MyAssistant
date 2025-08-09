@@ -10,13 +10,14 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png" // support PNG
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/charmbracelet/glamour"
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/option"
+	// "github.com/openai/openai-go/v2/shared"
 )
 
 var rulesJSON = filepath.Join(projectRoot(), "rules.json")
@@ -28,8 +29,8 @@ func projectRoot() string {
 
 type Session struct {
 	mu       sync.Mutex
-	client   *openai.Client
-	messages []openai.ChatCompletionMessage
+	client   openai.Client
+	messages []openai.ChatCompletionMessageParamUnion
 }
 
 type PromptConfig struct {
@@ -37,116 +38,103 @@ type PromptConfig struct {
 }
 
 func NewSession() (*Session, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return nil, errors.New("OPENAI_API_KEY not set")
-	}
-	client := openai.NewClient(apiKey)
-	return &Session{
-		client:   client,
-		messages: []openai.ChatCompletionMessage{},
-	}, nil
+   apiKey := os.Getenv("OPENAI_API_KEY")
+
+   if apiKey == "" {
+	   return nil, errors.New("OPENAI_API_KEY not set")
+   }
+
+   client := openai.NewClient(option.WithAPIKey(apiKey))
+
+   return &Session{
+	   client:   client,
+	   messages: []openai.ChatCompletionMessageParamUnion{},
+   }, nil
 }
 
 func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
-	ctx := context.Background()
+   ctx := context.Background()
 
-	// 1. Transcribe audio using Whisper
-	transcript, err := s.transcribeAudio(ctx, audioPath)
-	if err != nil {
-		return fmt.Errorf("transcription failed: %w", err)
-	}
+   // 1. Transcribe audio using Whisper
+   transcript, err := s.transcribeAudio(ctx, audioPath)
+   if err != nil {
+	   return fmt.Errorf("transcription failed: %w", err)
+   }
 
-	// 2. Read and encode screenshot
-	imgDataURI, err := compressAndEncodeImage(screenshotPath)
-	if err != nil {
-		return fmt.Errorf("Failed to prepare image: %w", err)
-	}
+   // 2. Compress and encode screenshot as JPEG base64 data URI
+   dataURI, err := compressAndEncodeImage(screenshotPath)
+   if err != nil {
+	   return fmt.Errorf("failed to compress image: %w", err)
+   }
 
-	// Append system message once
-	s.mu.Lock()
-	if len(s.messages) == 0 {
-		var systemPrompt = buildSystemPrompt()
+   // Prepare image content part for OpenAI vision
+   imagePart := openai.ChatCompletionContentPartUnionParam{
+	   OfImageURL: &openai.ChatCompletionContentPartImageParam{
+		   ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+			   URL:   dataURI,
+			   Detail: "auto",
+		   },
+	   },
+   }
 
-		s.messages = append(s.messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: systemPrompt,
-		})
-	}
+   // Prepare transcript content part (if any)
+   var contentParts []openai.ChatCompletionContentPartUnionParam
+   contentParts = append(contentParts, imagePart)
+   if transcript != "" {
+	   fmt.Printf("transcript: %s\n", transcript)
+	   contentParts = append(contentParts, openai.TextContentPart(fmt.Sprintf("Transcript:\n\n%s", transcript)))
+   }
 
-	var parts []openai.ChatMessagePart
+   // Append system message once
+   s.mu.Lock()
+   if len(s.messages) == 0 {
+	   var systemPrompt = buildSystemPrompt()
+	   s.messages = append(s.messages, openai.SystemMessage(systemPrompt))
+   }
+   // User message with multi-modal content
+   s.messages = append(s.messages, openai.UserMessage(contentParts))
+   s.mu.Unlock()
 
-	parts = append(parts, openai.ChatMessagePart{
-		Type: openai.ChatMessagePartTypeImageURL,
-		ImageURL: &openai.ChatMessageImageURL{
-			URL:    imgDataURI,
-			Detail: openai.ImageURLDetailAuto,
-		},
-	})
+   params := openai.ChatCompletionNewParams{
+	   Messages: s.messages,
+	   Model:    "gpt-4o", // shared.ChatModelGPT5Mini,
+   }
 
-	if transcript != "" {
-		fmt.Printf("transcript: %s\n", transcript)
+   stream := s.client.Chat.Completions.NewStreaming(ctx, params)
+   defer stream.Close()
 
-		parts = append(parts, openai.ChatMessagePart{
-			Type: openai.ChatMessagePartTypeText,
-			Text: fmt.Sprintf("Transcript:\n\n%s", transcript),
-		})
-	}
+   fmt.Print("🤖 GPT-5 Response:\n")
 
-	userMessage := openai.ChatCompletionMessage{
-		Role:         openai.ChatMessageRoleUser,
-		MultiContent: parts,
-	}
-	s.messages = append(s.messages, userMessage)
-	s.mu.Unlock()
+   var fullContent string
+   for stream.Next() {
+	   chunk := stream.Current()
+	   if len(chunk.Choices) > 0 {
+		   delta := chunk.Choices[0].Delta.Content
+		   if delta != "" {
+			   if !pretty {
+				   fmt.Print(delta)
+			   }
+			   fullContent += delta
+		   }
+	   }
+   }
+   if err := stream.Err(); err != nil {
+	   return fmt.Errorf("stream error: %w", err)
+   }
 
-	stream, err := s.client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
-		Model:    openai.GPT4o,
-		Messages: s.messages,
-		Stream:   true,
-	})
-	if err != nil {
-		return fmt.Errorf("streaming chat completion failed: %w", err)
-	}
-	defer stream.Close()
+   if pretty {
+	   formatted, _ := renderMarkdown(fullContent)
+	   fmt.Println(formatted)
+   } else {
+	   fmt.Print("\n\n")
+   }
 
-	fmt.Print("🤖 GPT-4o Response:\n")
+   // Maintain Session Context
+   s.mu.Lock()
+   s.messages = append(s.messages, openai.AssistantMessage(fullContent))
+   s.mu.Unlock()
 
-	var fullContent string
-	for {
-		resp, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("stream error: %w", err)
-		}
-		if delta := resp.Choices[0].Delta.Content; delta != "" {
-			if !pretty {
-				fmt.Print(delta)
-			}
-			fullContent += delta
-		}
-	}
-
-	if pretty {
-		formatted, _ := renderMarkdown(fullContent)
-		fmt.Println(formatted)
-	} else {
-		fmt.Print("\n\n")
-	}
-
-	// Maintain Session Context
-	reply := openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleAssistant,
-		Content: fullContent,
-	}
-
-	s.mu.Lock()
-	s.messages = append(s.messages, reply)
-	s.mu.Unlock()
-
-	return nil
+   return nil
 }
 
 func buildSystemPrompt() string {
@@ -155,7 +143,7 @@ func buildSystemPrompt() string {
 	Assume that the user needs help with the context that's provided to you.
 	Make the best assumption about what the user needs help with.
 	Always validate your own answer.
-	void polite or generic statements like "let me know if you have other questions" or "feel free to ask".
+	Avoid polite or generic statements like "let me know if you have other questions" or "feel free to ask".
 	Only respond with the most relevant, concise, and helpful information.`
 
 	// Load technical user prompt from JSON
@@ -174,19 +162,25 @@ func buildSystemPrompt() string {
 }
 
 func (s *Session) transcribeAudio(ctx context.Context, audioPath string) (string, error) {
-	if audioPath == "" {
-		return "", nil
-	}
+   if audioPath == "" {
+	   return "", nil
+   }
 
-	req := openai.AudioRequest{
-		Model:    openai.Whisper1,
-		FilePath: audioPath,
-	}
-	resp, err := s.client.CreateTranscription(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	return resp.Text, nil
+   file, err := os.Open(audioPath)
+   if err != nil {
+	   return "", err
+   }
+   defer file.Close()
+
+   params := openai.AudioTranscriptionNewParams{
+	   File:  file,
+	   Model: "whisper-1",
+   }
+   resp, err := s.client.Audio.Transcriptions.New(ctx, params)
+   if err != nil {
+	   return "", err
+   }
+   return resp.Text, nil
 }
 
 func compressAndEncodeImage(path string) (string, error) {
