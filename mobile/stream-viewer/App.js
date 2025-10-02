@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TextInput, Button, StyleSheet, ScrollView, Text, Platform } from 'react-native';
+import { Dimensions, View, TextInput, Button, StyleSheet, ScrollView, Text, Platform, TouchableOpacity } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import MDViewer from './MDViewer';
+
+const screen = Dimensions.get("screen");
 
 export default function App() {
   const [wsUrl, setWsUrl] = useState('ws://10.0.0.33:4000/stream?role=viewer'); // <— change to your Mac's IP
   const [isConnected, setIsConnected] = useState(false);
   const [content, setContent] = useState('');
+  const [isLandscape, setIsLandscape] = useState(screen.width > screen.height);
 
   const scrollRef = useRef(null);
   const userHoldingRef = useRef(false);
@@ -14,6 +19,10 @@ export default function App() {
   const pendingRef = useRef('');
   const rafRef = useRef(null);
   const flushScheduledRef = useRef(false); // guard to avoid rescheduling within same frame
+
+  Dimensions.addEventListener("change", ({ screen }) => {
+    setIsLandscape(screen.width > screen.height ? true : false);
+  });
 
   useEffect(() => {
     // Clean up WebSocket connection on unmount
@@ -123,6 +132,16 @@ export default function App() {
     setIsConnected(false);
   };
 
+  const clearContent = () => {
+    setContent('');
+    pendingRef.current = '';
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    flushScheduledRef.current = false;
+  };
+
   const onScroll = (e) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
     const atBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 12;
@@ -130,7 +149,7 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={{...styles.container,"paddingHorizontal": isLandscape ? 48 : 10 }}>
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -144,7 +163,21 @@ export default function App() {
         {!isConnected ? (
           <Button title="Connect" onPress={connect} />
         ) : (
-          <Button title="Disconnect" onPress={disconnect} color={Platform.OS === 'ios' ? 'red' : undefined} />
+          <>
+            <Button 
+              title="Disconnect" 
+              onPress={disconnect} 
+              color={Platform.OS === 'ios' ? 'red' : undefined} 
+            />
+            <TouchableOpacity 
+              style={styles.clearButton} 
+              onPress={clearContent}
+              accessible={true}
+              accessibilityLabel="Clear content"
+            >
+              <Icon name="delete" size={24} color="#fff" />
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
@@ -155,19 +188,29 @@ export default function App() {
         scrollEventThrottle={16}
         contentContainerStyle={styles.scrollInner}
       >
-        <Text style={styles.text}>{content || (isConnected ? '' : 'Not connected')}</Text>
+        <MDViewer markdown={content || (isConnected ? '' : 'Not connected')} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 48, backgroundColor: '#0b0b0b' },
-  inputRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, marginBottom: 12 },
+  container: { flex: 1, paddingTop: 48, backgroundColor: '#e7e7e7ff' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 12 },
   input: {
     flex: 1,
     borderWidth: 1, borderColor: '#333', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
-    color: '#fff', backgroundColor: '#141414',
+    color: '#000', backgroundColor: '#e7e7e7ff',
+  },
+  clearButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#ef4d4dff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ef4d4dff',
   },
   scroll: { flex: 1 },
   scrollInner: { paddingHorizontal: 12, paddingBottom: 24 },
