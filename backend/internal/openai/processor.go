@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/glamour"
 	openai "github.com/openai/openai-go/v2"
@@ -59,10 +60,22 @@ func NewSession(writer stream.StreamWriter) (*Session, error) {
 func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
    ctx := context.Background()
 
-   // 1. Transcribe audio using Whisper
-   transcript, err := s.transcribeAudio(ctx, audioPath)
-   if err != nil {
-     return fmt.Errorf("transcription failed: %w", err)
+   // Wait for screenshot file with retry
+   if err := waitForFileWithRetry(screenshotPath, 5, 2*time.Second); err != nil {
+     return fmt.Errorf("screenshot file not available: %w", err)
+   }
+
+   // 1. Transcribe audio using Whisper (if available)
+   var transcript string
+   if audioPath != "" {
+     if err := waitForFileWithRetry(audioPath, 5, 2*time.Second); err != nil {
+       fmt.Printf("Audio file not available: %v (continuing without audio)\n", err)
+     } else {
+       transcript, err = s.transcribeAudio(ctx, audioPath)
+       if err != nil {
+         fmt.Printf("transcription failed: %v (continuing without transcript)\n", err)
+       }
+     }
    }
 
    // 2. Compress and encode screenshot as JPEG base64 data URI
@@ -103,13 +116,14 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
 
    params := openai.ChatCompletionNewParams{
      Messages: s.messages,
-     Model:    "gpt-4o", // shared.ChatModelGPT5Mini,
+     Model:    "gpt-4.1", // shared.ChatModelGPT5Mini,
+    //  MaxCompletionTokens: openai.Int(4096),
    }
 
    stream := s.client.Chat.Completions.NewStreaming(ctx, params)
    defer stream.Close()
 
-   fmt.Print("🤖 GPT-5 Response:\n")
+   fmt.Print("🤖 GPT Response:\n")
 
    var fullContent string
    chunkCount := 0
@@ -225,6 +239,20 @@ func compressAndEncodeImage(path string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
 	dataURI := "data:image/jpeg;base64," + encoded
 	return dataURI, nil
+}
+
+// waitForFileWithRetry waits for a file to exist with retry logic
+func waitForFileWithRetry(filePath string, maxRetries int, delay time.Duration) error {
+	for i := 0; i < maxRetries; i++ {
+		if _, err := os.Stat(filePath); err == nil {
+			return nil // File exists
+		}
+		
+		if i < maxRetries-1 {
+			time.Sleep(delay)
+		}
+	}
+	return fmt.Errorf("file %s does not exist after %d retries", filePath, maxRetries)
 }
 
 func renderMarkdown(md string) (string, error) {

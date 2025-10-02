@@ -34,7 +34,7 @@ const md = MarkdownIt({
   .disable(['smartquotes']); // keep quotes literal for code-heavy content
 
 function CodeBlock({ code, language, isDark, nodeKey }) {
-  const codeFontSize = 18; // <-- set your size
+  const codeFontSize = 20; // <-- set your size
   const codeLineHeight = Math.round(codeFontSize * 1.1);
 
   // If styles failed to load, render a simple, styled Text block (no colors)
@@ -54,7 +54,12 @@ function CodeBlock({ code, language, isDark, nodeKey }) {
         PreTag={Text}
         CodeTag={Text}
         highlighter="hljs"
-        customStyle={{ backgroundColor: 'transparent', padding: 0 }}
+        customStyle={{ 
+          backgroundColor: 'transparent', 
+          padding: 0, 
+          fontSize: codeFontSize,
+          lineHeight: codeLineHeight, 
+        }}
         codeTagProps={{
           style: {
             fontSize: codeFontSize,
