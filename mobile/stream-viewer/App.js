@@ -21,7 +21,9 @@ export default function App() {
   const flushScheduledRef = useRef(false); // guard to avoid rescheduling within same frame
 
   Dimensions.addEventListener("change", ({ screen }) => {
-    setIsLandscape(screen.width > screen.height ? true : false);
+    if (isLandscape !== screen.width > screen.height) {
+      setIsLandscape(screen.width > screen.height ? true : false);
+    }
   });
 
   useEffect(() => {
@@ -50,10 +52,10 @@ export default function App() {
     rafRef.current = null;
     flushScheduledRef.current = false;
 
-    // Auto-scroll if user hasn't “held” the view
-    if (!userHoldingRef.current) {
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-    }
+    // // Auto-scroll if user hasn't “held” the view
+    // if (!userHoldingRef.current) {
+    //   requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    // }
   };
 
   const scheduleFlush = () => {
@@ -149,7 +151,7 @@ export default function App() {
   };
 
   return (
-    <View style={{...styles.container,"paddingHorizontal": isLandscape ? 48 : 10 }}>
+    <View style={{...styles.container,"paddingHorizontal": 24 }}>
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -164,11 +166,6 @@ export default function App() {
           <Button title="Connect" onPress={connect} />
         ) : (
           <>
-            <Button 
-              title="Disconnect" 
-              onPress={disconnect} 
-              color={Platform.OS === 'ios' ? 'red' : undefined} 
-            />
             <TouchableOpacity 
               style={styles.clearButton} 
               onPress={clearContent}
@@ -177,6 +174,11 @@ export default function App() {
             >
               <Icon name="delete" size={24} color="#fff" />
             </TouchableOpacity>
+            <Button 
+              title="Disconnect" 
+              onPress={disconnect} 
+              color={Platform.OS === 'ios' ? 'red' : undefined} 
+            />
           </>
         )}
       </View>

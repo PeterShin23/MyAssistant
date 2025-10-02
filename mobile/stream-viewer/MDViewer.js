@@ -34,11 +34,14 @@ const md = MarkdownIt({
   .disable(['smartquotes']); // keep quotes literal for code-heavy content
 
 function CodeBlock({ code, language, isDark, nodeKey }) {
+  const codeFontSize = 18; // <-- set your size
+  const codeLineHeight = Math.round(codeFontSize * 1.1);
+
   // If styles failed to load, render a simple, styled Text block (no colors)
   if (!atomOneDark || !atomOneLight) {
     return (
       <View key={nodeKey} style={styles.fallbackCodeWrap}>
-        <Text selectable style={styles.fallbackCodeText}>{code}</Text>
+        <Text selectable style={[styles.fallbackCodeText, { fontSize: codeFontSize, lineHeight: codeLineHeight }]}>{code}</Text>
       </View>
     );
   }
@@ -52,6 +55,13 @@ function CodeBlock({ code, language, isDark, nodeKey }) {
         CodeTag={Text}
         highlighter="hljs"
         customStyle={{ backgroundColor: 'transparent', padding: 0 }}
+        codeTagProps={{
+          style: {
+            fontSize: codeFontSize,
+            lineHeight: codeLineHeight,
+            fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+          },
+        }}
       >
         {code}
       </SyntaxHighlighter>
