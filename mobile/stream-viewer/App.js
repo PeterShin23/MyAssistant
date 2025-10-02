@@ -13,6 +13,7 @@ export default function App() {
   // Simple coalescing buffer to reduce re-renders
   const pendingRef = useRef('');
   const rafRef = useRef(null);
+  const flushScheduledRef = useRef(false); // guard to avoid rescheduling within same frame
 
   useEffect(() => {
     // Clean up WebSocket connection on unmount
@@ -20,11 +21,40 @@ export default function App() {
       if (wsRef.current) {
         wsRef.current.close();
       }
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
+      // Final flush so nothing is stranded
+      if (pendingRef.current.length) {
+        setContent((prev) => prev + pendingRef.current);
+        pendingRef.current = '';
       }
+      rafRef.current = null;
+      flushScheduledRef.current = false;
     };
   }, []);
+
+  const flush = () => {
+    // Move pending into state once per frame
+    const delta = pendingRef.current;
+    if (delta.length) {
+      setContent((prev) => prev + delta); // functional update avoids stale closure
+      pendingRef.current = '';
+    }
+    rafRef.current = null;
+    flushScheduledRef.current = false;
+
+    // Auto-scroll if user hasn't “held” the view
+    if (!userHoldingRef.current) {
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    }
+  };
+
+  const scheduleFlush = () => {
+    // Schedule exactly one flush per frame; do not cancel an existing RAF
+    if (flushScheduledRef.current) return;
+    flushScheduledRef.current = true;
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(flush);
+    }
+  };
 
   const connect = () => {
     // Close existing connection if any
@@ -41,33 +71,43 @@ export default function App() {
     };
 
     ws.onmessage = (event) => {
+      // console.log('[Frontend] Received WebSocket message:', event.data);
+
       let chunk = '';
       try {
         // Parse the JSON message
         const data = typeof event.data === 'string' ? event.data : String(event.data);
+
         const parsed = JSON.parse(data);
+
         chunk = typeof parsed?.chunk === 'string' ? parsed.chunk : data; // fall back to raw
-      } catch {
+        // console.log('[Frontend] Extracted chunk:', chunk);
+      } catch (error) {
+        // console.log('[Frontend] JSON parse failed, using raw data:', error.message);
         // not JSON? append raw
         chunk = typeof event.data === 'string' ? event.data : String(event.data);
       }
 
+      // console.log('[Frontend] Final chunk to append:', chunk);
+      // console.log('[Frontend] Pending content before append:', pendingRef.current.length, 'chars');
+
       pendingRef.current += chunk;
+      // console.log('[Frontend] Pending content after append:', pendingRef.current.length, 'chars');
 
-      if (rafRef.current == null) {
-        rafRef.current = requestAnimationFrame(() => {
-          setContent((prev) => prev + pendingRef.current);
-          pendingRef.current = '';
-          rafRef.current = null;
-
-          if (!userHoldingRef.current) {
-            requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-          }
-        });
-      }
+      // Schedule one flush per frame (do NOT cancel an existing RAF)
+      scheduleFlush();
     };
 
     ws.onclose = () => {
+      console.log('[Frontend] WebSocket connection closed');
+      // Process any remaining chunks before disconnecting
+      if (pendingRef.current.length > 0) {
+        // console.log('[Frontend] Processing remaining chunks before close:', pendingRef.current.length);
+        setContent((prev) => prev + pendingRef.current);
+        pendingRef.current = '';
+      }
+      rafRef.current = null;
+      flushScheduledRef.current = false;
       setIsConnected(false);
     };
 
@@ -133,18 +173,3 @@ const styles = StyleSheet.create({
   scrollInner: { paddingHorizontal: 12, paddingBottom: 24 },
   text: { color: '#e6e6e6', fontSize: 16, lineHeight: 22, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) },
 });
-
-// import { View, Text, StyleSheet } from 'react-native';
-
-// export default function App() {
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.text}>Hello from Expo SDK 54 👋</Text>
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, backgroundColor: '#0b0b0b', alignItems: 'center', justifyContent: 'center' },
-//   text: { color: '#fff', fontSize: 20 },
-// });

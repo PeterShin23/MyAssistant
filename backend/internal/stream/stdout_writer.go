@@ -3,6 +3,9 @@ package stream
 import (
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/charmbracelet/glamour"
 )
 
 // StdoutWriter implements StreamWriter for writing to stdout
@@ -30,6 +33,13 @@ func (w *StdoutWriter) WriteChunk(chunk string) error {
 	return nil
 }
 
+// MarkStreamComplete marks the current stream as complete for stdout writer
+func (w *StdoutWriter) MarkStreamComplete() error {
+	// For stdout, we don't need to do anything special for stream completion
+	// The content is either already printed (raw mode) or will be printed on Close
+	return nil
+}
+
 // Close implements StreamWriter
 func (w *StdoutWriter) Close() error {
 	if !w.pretty {
@@ -38,10 +48,32 @@ func (w *StdoutWriter) Close() error {
 		return err
 	}
 	
-	// For pretty mode, we should render the full content
-	// However, since we don't have access to the glamour package here,
-	// we'll just print the accumulated content
-	// The actual pretty rendering is done in the processor
-	_, err := fmt.Fprintln(os.Stdout, w.fullContent)
+	// For pretty mode, render the full content with markdown
+	if w.fullContent != "" {
+		// Clean up common streaming artifacts
+		cleanedContent := strings.TrimSpace(w.fullContent)
+		if cleanedContent != "" {
+			formatted, err := renderMarkdown(cleanedContent)
+			if err != nil {
+				// Fallback to plain text if rendering fails
+				_, err = fmt.Fprintln(os.Stdout, cleanedContent)
+				return err
+			}
+			_, err = fmt.Fprintln(os.Stdout, formatted)
+			return err
+		}
+	}
+	
+	// If no content, just print a newline
+	_, err := fmt.Fprintln(os.Stdout)
 	return err
+}
+
+// renderMarkdown renders markdown content with glamour
+func renderMarkdown(md string) (string, error) {
+	out, err := glamour.Render(md, "dark")
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }

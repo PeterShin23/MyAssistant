@@ -61,8 +61,8 @@ func main() {
 				wsWriter := stream.NewWSWriter(wsURL, wsToken)
 				writer = stream.NewTeeWriter(stdoutWriter, wsWriter)
 				
-				// Start the reconnection loop for WSWriter
-				wsWriter.StartReconnectLoop()
+				// Note: WSWriter now handles its own reconnection loop
+				// No need to call StartReconnectLoop() here anymore
 			}
 
 			session, err := openai.NewSession(writer)

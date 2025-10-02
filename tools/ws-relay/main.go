@@ -47,6 +47,8 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	log.Printf("[%s] New connection from %s", role, r.RemoteAddr)
+
 	// Handle producer connections
 	if role == "producer" {
 		// Check authentication if token is required
@@ -55,6 +57,7 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
 				conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Missing Authorization header"))
+				log.Printf("[producer] Missing Authorization header from %s", r.RemoteAddr)
 				return
 			}
 
@@ -62,9 +65,12 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 			expectedAuth := "Bearer " + *wsToken
 			if authHeader != expectedAuth {
 				conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Invalid Authorization token"))
+				log.Printf("[producer] Invalid Authorization token from %s", r.RemoteAddr)
 				return
 			}
 		}
+
+		log.Printf("[producer] Producer connected from %s", r.RemoteAddr)
 
 		// Add producer to producers map
 		clientsMu.Lock()
@@ -74,22 +80,34 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 			clientsMu.Lock()
 			delete(producers, conn)
 			clientsMu.Unlock()
+			log.Printf("[producer] Producer disconnected from %s", r.RemoteAddr)
 		}()
 
 		// Handle messages from producer
 		for {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				log.Printf("producer read error: %v", err)
+				log.Printf("[producer] Producer read error from %s: %v", r.RemoteAddr, err)
 				break
+			}
+
+			// Log incoming message from producer
+			if messageType == websocket.TextMessage {
+				// log.Printf("[producer] Message received from %s: %s", r.RemoteAddr, string(message))
+			} else {
+				// log.Printf("[producer] Binary message received from %s (size: %d bytes)", r.RemoteAddr, len(message))
 			}
 
 			// Broadcast message to all viewers
 			clientsMu.RLock()
+			// viewerCount := len(viewers)
+			// if viewerCount > 0 {
+			// 	log.Printf("[producer] Broadcasting to %d viewers", viewerCount)
+			// }
 			for viewer := range viewers {
 				err := viewer.WriteMessage(messageType, message)
 				if err != nil {
-					log.Printf("viewer write error: %v", err)
+					log.Printf("[producer] Viewer write error: %v", err)
 					// We'll remove the viewer later when we detect the error
 				}
 			}
@@ -99,18 +117,23 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 		// Handle viewer connections
 		clientsMu.Lock()
 		viewers[conn] = true
+		viewerCount := len(viewers)
 		clientsMu.Unlock()
+		log.Printf("[viewer] Viewer connected from %s (total viewers: %d)", r.RemoteAddr, viewerCount)
+
 		defer func() {
 			clientsMu.Lock()
 			delete(viewers, conn)
+			viewerCount := len(viewers)
 			clientsMu.Unlock()
+			log.Printf("[viewer] Viewer disconnected from %s (total viewers: %d)", r.RemoteAddr, viewerCount)
 		}()
 
 		// Keep the connection alive
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
-				log.Printf("viewer read error: %v", err)
+				log.Printf("[viewer] Viewer read error from %s: %v", r.RemoteAddr, err)
 				break
 			}
 		}

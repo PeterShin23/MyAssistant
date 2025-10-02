@@ -3,6 +3,7 @@ package stream
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,15 +32,26 @@ type WSWriter struct {
 	dialer    *websocket.Dialer
 }
 
-// NewWSWriter creates a new WSWriter
+// NewWSWriter creates a new WSWriter and establishes initial connection
 func NewWSWriter(url, token string) *WSWriter {
-	return &WSWriter{
+	w := &WSWriter{
 		url:       url,
 		token:     token,
 		buffer:    make([]WSMessage, 0),
 		bufferMax: 100, // Max buffer size
 		dialer:    &websocket.Dialer{},
 	}
+	
+	// Establish initial connection immediately
+	if err := w.connect(); err != nil {
+		fmt.Printf("Warning: initial WebSocket connection failed: %v\n", err)
+		// Start the reconnection loop in the background
+		go w.StartReconnectLoop()
+	} else {
+		fmt.Printf("WebSocket connection established to %s\n", url)
+	}
+	
+	return w
 }
 
 // WriteChunk writes a chunk to the WebSocket
@@ -59,15 +71,24 @@ func (w *WSWriter) WriteChunk(chunk string) error {
 	w.mu.Lock()
 	if w.conn != nil {
 		err := w.conn.WriteJSON(msg)
+		if err != nil {
+			fmt.Printf("[WSWriter] Failed to send message (seq=%d): %v\n", msg.Seq, err)
+			// For broken pipe errors, close the connection so reconnect loop can handle it
+			if strings.Contains(err.Error(), "broken pipe") || 
+			   strings.Contains(err.Error(), "connection reset") ||
+			   strings.Contains(err.Error(), "write: ") {
+				fmt.Printf("[WSWriter] Connection error, closing for reconnect (seq=%d)\n", msg.Seq)
+				w.conn.Close()
+				w.conn = nil
+			}
+		} 
+		// else {
+		// 	fmt.Printf("[WSWriter] Sent message (seq=%d, chunklen=%d): %q\n", msg.Seq, len(msg.Chunk), msg.Chunk)
+		// }
 		w.mu.Unlock()
-		if err == nil {
-			return nil
-		}
-		// If there was an error, close the connection and fall through to buffering
-		w.conn.Close()
-		w.conn = nil
 	} else {
 		w.mu.Unlock()
+		// fmt.Printf("[WSWriter] No connection, buffering message (seq=%d)\n", msg.Seq)
 	}
 
 	// Buffer the message for later sending
@@ -77,24 +98,74 @@ func (w *WSWriter) WriteChunk(chunk string) error {
 	// Apply backpressure protection - drop oldest messages if buffer is full
 	if len(w.buffer) >= w.bufferMax {
 		// Remove oldest message (at index 0)
+		// dropped := w.buffer[0]
 		w.buffer = w.buffer[1:]
+		// fmt.Printf("[WSWriter] Buffer full, dropped oldest message (seq=%d)\n", dropped.Seq)
 	}
 
 	w.buffer = append(w.buffer, msg)
 	return nil
 }
 
-// Close closes the WebSocket connection
+// Close closes the WebSocket connection and clears the buffer
+// This should only be called when the terminal is shutting down
 func (w *WSWriter) Close() error {
 	atomic.StoreInt32(&w.closed, 1)
+	
+	// Clear the buffer when closing
+	w.ClearBuffer()
 	
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	
 	if w.conn != nil {
+		fmt.Printf("[WSWriter] Closing WebSocket connection (terminal shutdown)\n")
 		return w.conn.Close()
 	}
 	return nil
+}
+
+// MarkStreamComplete marks the current stream as complete without closing the connection
+func (w *WSWriter) MarkStreamComplete() error {
+	// fmt.Printf("[WSWriter] Stream completed, keeping connection open\n")
+	
+	// Clear the buffer but keep the connection alive
+	w.ClearBuffer()
+	
+	// Don't close the connection - just mark that we're done with this stream
+	// The connection will remain open for the next request
+	return nil
+}
+
+// IsConnected returns true if the WebSocket connection is active
+func (w *WSWriter) IsConnected() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.conn != nil
+}
+
+// ClearBuffer clears all buffered messages
+func (w *WSWriter) ClearBuffer() {
+	w.bufferMu.Lock()
+	defer w.bufferMu.Unlock()
+	
+	// bufferSize := len(w.buffer)
+	w.buffer = w.buffer[:0]
+	// fmt.Printf("[WSWriter] Buffer cleared, removed %d messages\n", bufferSize)
+}
+
+// ForceReconnection closes the current connection and forces an immediate reconnection
+func (w *WSWriter) ForceReconnection() {
+	fmt.Printf("[WSWriter] Force reconnection requested\n")
+	
+	w.mu.Lock()
+	if w.conn != nil {
+		w.conn.Close()
+		w.conn = nil
+	}
+	w.mu.Unlock()
+	
+	// The reconnect loop will detect the nil connection and reconnect
 }
 
 // connect establishes a WebSocket connection with optional authentication
@@ -104,9 +175,19 @@ func (w *WSWriter) connect() error {
 		header.Set("Authorization", "Bearer "+w.token)
 	}
 
-	conn, _, err := w.dialer.Dial(w.url, header)
+	// Ensure the URL has the role parameter
+	url := w.url
+	if !strings.Contains(url, "?role=") && !strings.Contains(url, "&role=") {
+		if strings.Contains(url, "?") {
+			url += "&role=producer"
+		} else {
+			url += "?role=producer"
+		}
+	}
+
+	conn, _, err := w.dialer.Dial(url, header)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to %s: %w", url, err)
 	}
 
 	w.conn = conn
@@ -122,18 +203,44 @@ func (w *WSWriter) flushBuffer() {
 		return
 	}
 
+	// fmt.Printf("[WSWriter] Flushing %d buffered messages\n", len(w.buffer))
+
+	// Create a copy of the buffer to iterate over
+	bufferCopy := make([]WSMessage, len(w.buffer))
+	copy(bufferCopy, w.buffer)
+
 	// Send all buffered messages
-	for _, msg := range w.buffer {
+	successCount := 0
+	for i, msg := range bufferCopy {
 		err := w.conn.WriteJSON(msg)
 		if err != nil {
-			// If we fail to send, put messages back in buffer and return
-			// In a real implementation, you might want to handle this differently
-			return
+			fmt.Printf("[WSWriter] Failed to send buffered message %d (seq=%d): %v\n", i, msg.Seq, err)
+			// If we fail to send, close the connection to trigger reconnect
+			if strings.Contains(err.Error(), "broken pipe") || 
+			   strings.Contains(err.Error(), "connection reset") ||
+			   strings.Contains(err.Error(), "write: ") {
+				fmt.Printf("[WSWriter] Connection error during flush, closing for reconnect\n")
+				w.mu.Lock()
+				if w.conn != nil {
+					w.conn.Close()
+					w.conn = nil
+				}
+				w.mu.Unlock()
+			}
+			// Stop sending more messages, connection might be dead
+			break
 		}
+		// fmt.Printf("[WSWriter] Sent buffered message %d (seq=%d)\n", i, msg.Seq)
+		successCount++
 	}
 
-	// Clear buffer after successful send
-	w.buffer = w.buffer[:0]
+	// Only clear the messages that were successfully sent
+	if successCount > 0 {
+		w.buffer = w.buffer[successCount:]
+		// fmt.Printf("[WSWriter] Successfully flushed %d messages, %d remaining\n", successCount, len(w.buffer))
+	} else {
+		// fmt.Printf("[WSWriter] No messages were flushed, keeping all %d messages\n", len(w.buffer))
+	}
 }
 
 // StartReconnectLoop starts the reconnection loop in a goroutine
@@ -144,13 +251,15 @@ func (w *WSWriter) StartReconnectLoop() {
 
 		for atomic.LoadInt32(&w.closed) == 0 {
 			w.mu.Lock()
-			connected := w.conn != nil
+			conn := w.conn
 			w.mu.Unlock()
 
-			if !connected {
+			if conn == nil {
+				fmt.Printf("[WSWriter] Connection is nil, attempting to reconnect...\n")
 				err := w.connect()
 				if err == nil {
 					// Successfully reconnected, flush buffer
+					fmt.Printf("[WSWriter] Reconnected successfully, flushing buffer\n")
 					w.flushBuffer()
 					// Reset backoff on successful connection
 					backoff = time.Second
@@ -159,6 +268,7 @@ func (w *WSWriter) StartReconnectLoop() {
 					jitter := time.Duration(time.Now().UnixNano() % int64(backoff))
 					sleepTime := backoff + jitter/2
 					
+					fmt.Printf("[WSWriter] Reconnection failed (%v), retrying in %v\n", err, sleepTime)
 					time.Sleep(sleepTime)
 					
 					// Increase backoff for next attempt
@@ -169,25 +279,20 @@ func (w *WSWriter) StartReconnectLoop() {
 				}
 			} else {
 				// We're connected, check if connection is still alive with ping
-				w.mu.Lock()
-				conn := w.conn
-				w.mu.Unlock()
-				
-				if conn != nil {
-					// Send ping every 20 seconds
-					err := conn.WriteMessage(websocket.PingMessage, []byte{})
-					if err != nil {
-						// Connection is dead, close it and let it reconnect
-						w.mu.Lock()
-						if w.conn != nil {
-							w.conn.Close()
-							w.conn = nil
-						}
-						w.mu.Unlock()
+				err := conn.WriteMessage(websocket.PingMessage, []byte{})
+				if err != nil {
+					fmt.Printf("[WSWriter] Ping failed, connection lost: %v\n", err)
+					// Connection is dead, close it and let it reconnect
+					w.mu.Lock()
+					if w.conn != nil {
+						w.conn.Close()
+						w.conn = nil
 					}
+					w.mu.Unlock()
+				} else {
+					// Connection is healthy, sleep before next ping
+					time.Sleep(20 * time.Second)
 				}
-				
-				time.Sleep(20 * time.Second)
 			}
 		}
 	}()

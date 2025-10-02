@@ -62,46 +62,48 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
    // 1. Transcribe audio using Whisper
    transcript, err := s.transcribeAudio(ctx, audioPath)
    if err != nil {
-	   return fmt.Errorf("transcription failed: %w", err)
+     return fmt.Errorf("transcription failed: %w", err)
    }
 
    // 2. Compress and encode screenshot as JPEG base64 data URI
    dataURI, err := compressAndEncodeImage(screenshotPath)
    if err != nil {
-	   return fmt.Errorf("failed to compress image: %w", err)
+     return fmt.Errorf("failed to compress image: %w", err)
    }
 
    // Prepare image content part for OpenAI vision
    imagePart := openai.ChatCompletionContentPartUnionParam{
-	   OfImageURL: &openai.ChatCompletionContentPartImageParam{
-		   ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-			   URL:   dataURI,
-			   Detail: "auto",
-		   },
-	   },
+     OfImageURL: &openai.ChatCompletionContentPartImageParam{
+       ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+         URL:   dataURI,
+         Detail: "auto",
+       },
+     },
    }
 
    // Prepare transcript content part (if any)
    var contentParts []openai.ChatCompletionContentPartUnionParam
    contentParts = append(contentParts, imagePart)
    if transcript != "" {
-	   fmt.Printf("transcript: %s\n", transcript)
-	   contentParts = append(contentParts, openai.TextContentPart(fmt.Sprintf("Transcript:\n\n%s", transcript)))
+     fmt.Printf("transcript: %s\n", transcript)
+     contentParts = append(contentParts, openai.TextContentPart(fmt.Sprintf("Transcript:\n\n%s", transcript)))
    }
 
-   // Append system message once
+   // Prepare user message
+   userMessage := openai.UserMessage(contentParts)
+
+   // Append system message once and user message for this request
    s.mu.Lock()
    if len(s.messages) == 0 {
-	   var systemPrompt = buildSystemPrompt()
-	   s.messages = append(s.messages, openai.SystemMessage(systemPrompt))
+     var systemPrompt = buildSystemPrompt()
+     s.messages = append(s.messages, openai.SystemMessage(systemPrompt))
    }
-   // User message with multi-modal content
-   s.messages = append(s.messages, openai.UserMessage(contentParts))
+   s.messages = append(s.messages, userMessage)
    s.mu.Unlock()
 
    params := openai.ChatCompletionNewParams{
-	   Messages: s.messages,
-	   Model:    "gpt-4o", // shared.ChatModelGPT5Mini,
+     Messages: s.messages,
+     Model:    "gpt-4o", // shared.ChatModelGPT5Mini,
    }
 
    stream := s.client.Chat.Completions.NewStreaming(ctx, params)
@@ -110,37 +112,43 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
    fmt.Print("🤖 GPT-5 Response:\n")
 
    var fullContent string
+   chunkCount := 0
    for stream.Next() {
-	   chunk := stream.Current()
-	   if len(chunk.Choices) > 0 {
-		   delta := chunk.Choices[0].Delta.Content
-		   if delta != "" {
-			   // Write chunk to StreamWriter
-			   if s.writer != nil {
-				   s.writer.WriteChunk(delta)
-			   }
-			   fullContent += delta
-		   }
-	   }
+     chunk := stream.Current()
+     if len(chunk.Choices) > 0 {
+       delta := chunk.Choices[0].Delta.Content
+       if delta != "" {
+         chunkCount++
+				//  fmt.Print(delta)
+        //  fmt.Printf("[Processor] Processing chunk %d: %q\n", chunkCount, delta)
+         if s.writer != nil {
+           if err := s.writer.WriteChunk(delta); err != nil {
+             // Log error but continue processing
+             fmt.Printf("Warning: failed to write chunk %d to stream: %v\n", chunkCount, err)
+           }
+         }
+         fullContent += delta
+       }
+     }
    }
    if err := stream.Err(); err != nil {
-	   return fmt.Errorf("stream error: %w", err)
+     return fmt.Errorf("stream error: %w", err)
    }
 
-   // Close the writer to signal end of stream
+   fmt.Printf("[Processor] Stream completed. Total chunks received: %d, total content length: %d\n", chunkCount, len(fullContent))
+
+   // Mark stream as complete but keep the connection open for next request
    if s.writer != nil {
-	   s.writer.Close()
+     fmt.Printf("[Processor] Marking stream complete after %d chunks (keeping connection open)\n", chunkCount)
+     
+     if err := s.writer.MarkStreamComplete(); err != nil {
+       fmt.Printf("Warning: failed to mark stream complete: %v\n", err)
+     } else {
+       fmt.Printf("[Processor] Stream marked as successfully\n")
+     }
    }
 
-   // For pretty mode, we still print to stdout for immediate feedback
-   if pretty {
-	   formatted, _ := renderMarkdown(fullContent)
-	   fmt.Println(formatted)
-   } else {
-	   fmt.Print("\n\n")
-   }
-
-   // Maintain Session Context
+   // Maintain Session Context - add assistant response to conversation
    s.mu.Lock()
    s.messages = append(s.messages, openai.AssistantMessage(fullContent))
    s.mu.Unlock()
