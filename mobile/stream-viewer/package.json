@@ -1,0 +1,31 @@
+{
+  "name": "stream-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "@ungap/structured-clone": "1.2.1",
+    "expo": "54.0.12",
+    "expo-asset": "~12.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-svg": "15.12.1",
+    "react-native-websocket": "^1.0.2",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "babel-preset-expo": "^11.0.15"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "@ungap/structured-clone": "1.2.1"
+  }
+}

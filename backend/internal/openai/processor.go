@@ -17,6 +17,8 @@ import (
 	"github.com/charmbracelet/glamour"
 	openai "github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/option"
+
+	"github.com/PeterShin23/MyAssistant/backend/internal/stream"
 	// "github.com/openai/openai-go/v2/shared"
 )
 
@@ -31,13 +33,14 @@ type Session struct {
 	mu       sync.Mutex
 	client   openai.Client
 	messages []openai.ChatCompletionMessageParamUnion
+	writer   stream.StreamWriter
 }
 
 type PromptConfig struct {
 	TechnicalPrompt string `json:"whatDoYouNeedHelpWith"`
 }
 
-func NewSession() (*Session, error) {
+func NewSession(writer stream.StreamWriter) (*Session, error) {
    apiKey := os.Getenv("OPENAI_API_KEY")
 
    if apiKey == "" {
@@ -49,6 +52,7 @@ func NewSession() (*Session, error) {
    return &Session{
 	   client:   client,
 	   messages: []openai.ChatCompletionMessageParamUnion{},
+	   writer:   writer,
    }, nil
 }
 
@@ -111,8 +115,9 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
 	   if len(chunk.Choices) > 0 {
 		   delta := chunk.Choices[0].Delta.Content
 		   if delta != "" {
-			   if !pretty {
-				   fmt.Print(delta)
+			   // Write chunk to StreamWriter
+			   if s.writer != nil {
+				   s.writer.WriteChunk(delta)
 			   }
 			   fullContent += delta
 		   }
@@ -122,6 +127,12 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
 	   return fmt.Errorf("stream error: %w", err)
    }
 
+   // Close the writer to signal end of stream
+   if s.writer != nil {
+	   s.writer.Close()
+   }
+
+   // For pretty mode, we still print to stdout for immediate feedback
    if pretty {
 	   formatted, _ := renderMarkdown(fullContent)
 	   fmt.Println(formatted)

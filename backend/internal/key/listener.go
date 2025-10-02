@@ -7,9 +7,9 @@ import (
 
 	hook "github.com/robotn/gohook"
 
-	"github.com/PeterShin23/MyAssistant/internal/audio"
-	"github.com/PeterShin23/MyAssistant/internal/openai"
-	"github.com/PeterShin23/MyAssistant/internal/screen"
+"github.com/PeterShin23/MyAssistant/backend/internal/audio"
+"github.com/PeterShin23/MyAssistant/backend/internal/openai"
+"github.com/PeterShin23/MyAssistant/backend/internal/screen"
 )
 
 const (
@@ -35,7 +35,7 @@ type listener struct {
 
 // StartKeyListener launches the listener loop.
 // It waits for backtick being held, and starts a session if held long enough.
-func StartKeyListener(session *openai.Session, noAudio bool, pretty bool) error {
+func StartKeyListener(session *openai.Session, noAudio bool, pretty bool, wsURL, wsToken string) error {
 	l := &listener{session: session, noAudio: noAudio, pretty: pretty}
 
 	fmt.Printf("🎧 Listening: hold backtick ≥ %.0fms to trigger\n", holdThreshold.Seconds()*1000)

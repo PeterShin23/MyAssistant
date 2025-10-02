@@ -5,8 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/PeterShin23/MyAssistant/internal/key"
-	"github.com/PeterShin23/MyAssistant/internal/openai"
+"github.com/PeterShin23/MyAssistant/backend/internal/key"
+"github.com/PeterShin23/MyAssistant/backend/internal/openai"
+"github.com/PeterShin23/MyAssistant/backend/internal/stream"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -34,6 +35,8 @@ func main() {
 
 	var noAudio bool
 	var pretty bool
+	var wsURL string
+	var wsToken string
 
 	var listenCmd = &cobra.Command{
 		Use:   "listen",
@@ -41,13 +44,34 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("👋 Let's get to work!")
 
-			session, err := openai.NewSession()
+			// Check for environment variable fallbacks
+			if wsURL == "" {
+				wsURL = os.Getenv("MYASSISTANT_WS_URL")
+			}
+			if wsToken == "" {
+				wsToken = os.Getenv("MYASSISTANT_WS_TOKEN")
+			}
+
+			// Create StreamWriter instances
+			stdoutWriter := stream.NewStdoutWriter(pretty)
+			var writer stream.StreamWriter = stdoutWriter
+
+			// If WebSocket URL is provided, create a WSWriter and TeeWriter
+			if wsURL != "" {
+				wsWriter := stream.NewWSWriter(wsURL, wsToken)
+				writer = stream.NewTeeWriter(stdoutWriter, wsWriter)
+				
+				// Start the reconnection loop for WSWriter
+				wsWriter.StartReconnectLoop()
+			}
+
+			session, err := openai.NewSession(writer)
 			if err != nil {
 				fmt.Println("Failed to create OpenAI session:", err)
 				os.Exit(1)
 			}
 
-			if err := key.StartKeyListener(session, noAudio, pretty); err != nil {
+			if err := key.StartKeyListener(session, noAudio, pretty, wsURL, wsToken); err != nil {
 				fmt.Println("Key Listener failed:", err)
 				os.Exit(1)
 			}
@@ -56,6 +80,8 @@ func main() {
 
 	listenCmd.Flags().BoolVar(&noAudio, "no-audio", false, "Disable audio recording")
 	listenCmd.Flags().BoolVar(&pretty, "pretty", false, "Outputs pretty markdown instead of streamed data")
+	listenCmd.Flags().StringVar(&wsURL, "ws-url", "", "WebSocket URL for streaming output")
+	listenCmd.Flags().StringVar(&wsToken, "ws-token", "", "Authorization token for WebSocket connection")
 
 	var clearCmd = &cobra.Command{
 		Use:   "clear",
