@@ -1,14 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Dimensions, View, TextInput, Button, StyleSheet, ScrollView, Text, Platform, TouchableOpacity } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import MDViewer from './MDViewer';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Dimensions,
+  View,
+  TextInput,
+  Button,
+  StyleSheet,
+  ScrollView,
+  Text,
+  Platform,
+  TouchableOpacity,
+} from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import MDViewer from "./MDViewer";
 
 const screen = Dimensions.get("screen");
 
+const address = "";
+
 export default function App() {
-  const [wsUrl, setWsUrl] = useState('ws://10.0.0.33:4000/stream?role=viewer'); // <— change to your Mac's IP
+  const [wsUrl, setWsUrl] = useState(`ws://${address}:4000/stream?role=viewer`);
   const [isConnected, setIsConnected] = useState(false);
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState("");
   const [isLandscape, setIsLandscape] = useState(screen.width > screen.height);
 
   const scrollRef = useRef(null);
@@ -16,7 +28,7 @@ export default function App() {
   const wsRef = useRef(null);
 
   // Simple coalescing buffer to reduce re-renders
-  const pendingRef = useRef('');
+  const pendingRef = useRef("");
   const rafRef = useRef(null);
   const flushScheduledRef = useRef(false); // guard to avoid rescheduling within same frame
 
@@ -35,7 +47,7 @@ export default function App() {
       // Final flush so nothing is stranded
       if (pendingRef.current.length) {
         setContent((prev) => prev + pendingRef.current);
-        pendingRef.current = '';
+        pendingRef.current = "";
       }
       rafRef.current = null;
       flushScheduledRef.current = false;
@@ -47,7 +59,7 @@ export default function App() {
     const delta = pendingRef.current;
     if (delta.length) {
       setContent((prev) => prev + delta); // functional update avoids stale closure
-      pendingRef.current = '';
+      pendingRef.current = "";
     }
     rafRef.current = null;
     flushScheduledRef.current = false;
@@ -84,19 +96,21 @@ export default function App() {
     ws.onmessage = (event) => {
       // console.log('[Frontend] Received WebSocket message:', event.data);
 
-      let chunk = '';
+      let chunk = "";
       try {
         // Parse the JSON message
-        const data = typeof event.data === 'string' ? event.data : String(event.data);
+        const data =
+          typeof event.data === "string" ? event.data : String(event.data);
 
         const parsed = JSON.parse(data);
 
-        chunk = typeof parsed?.chunk === 'string' ? parsed.chunk : data; // fall back to raw
+        chunk = typeof parsed?.chunk === "string" ? parsed.chunk : data; // fall back to raw
         // console.log('[Frontend] Extracted chunk:', chunk);
       } catch (error) {
         // console.log('[Frontend] JSON parse failed, using raw data:', error.message);
         // not JSON? append raw
-        chunk = typeof event.data === 'string' ? event.data : String(event.data);
+        chunk =
+          typeof event.data === "string" ? event.data : String(event.data);
       }
 
       // console.log('[Frontend] Final chunk to append:', chunk);
@@ -110,12 +124,12 @@ export default function App() {
     };
 
     ws.onclose = () => {
-      console.log('[Frontend] WebSocket connection closed');
+      console.log("[Frontend] WebSocket connection closed");
       // Process any remaining chunks before disconnecting
       if (pendingRef.current.length > 0) {
         // console.log('[Frontend] Processing remaining chunks before close:', pendingRef.current.length);
         setContent((prev) => prev + pendingRef.current);
-        pendingRef.current = '';
+        pendingRef.current = "";
       }
       rafRef.current = null;
       flushScheduledRef.current = false;
@@ -123,7 +137,7 @@ export default function App() {
     };
 
     ws.onerror = (error) => {
-      console.log('WebSocket error:', error);
+      console.log("WebSocket error:", error);
     };
   };
 
@@ -135,8 +149,8 @@ export default function App() {
   };
 
   const clearContent = () => {
-    setContent('');
-    pendingRef.current = '';
+    setContent("");
+    pendingRef.current = "";
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -147,28 +161,29 @@ export default function App() {
   const triggerScreenshot = () => {
     if (wsRef.current && isConnected) {
       const commandMessage = JSON.stringify({
-        type: 'command',
-        command: 'screenshot'
+        type: "command",
+        command: "screenshot",
       });
       wsRef.current.send(commandMessage);
-      console.log('[Frontend] Sent screenshot command');
+      console.log("[Frontend] Sent screenshot command");
     }
   };
 
   const onScroll = (e) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    const atBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 12;
+    const atBottom =
+      contentOffset.y + layoutMeasurement.height >= contentSize.height - 12;
     userHoldingRef.current = !atBottom;
   };
 
   return (
-    <View style={{...styles.container,"paddingHorizontal": 24 }}>
+    <View style={{ ...styles.container, paddingHorizontal: 24 }}>
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           value={wsUrl}
           onChangeText={setWsUrl}
-          placeholder="ws://10.0.0.33:4000/stream?role=viewer"
+          placeholder={`ws://${address}:4000/stream?role=viewer`}
           autoCapitalize="none"
           autoCorrect={false}
           editable={!isConnected}
@@ -196,7 +211,7 @@ export default function App() {
             <Button
               title="Disconnect"
               onPress={disconnect}
-              color={Platform.OS === 'ios' ? 'red' : undefined}
+              color={Platform.OS === "ios" ? "red" : undefined}
             />
           </>
         )}
@@ -209,41 +224,57 @@ export default function App() {
         scrollEventThrottle={16}
         contentContainerStyle={styles.scrollInner}
       >
-        <MDViewer markdown={content || (isConnected ? '' : 'Not connected')} />
+        <MDViewer markdown={content || (isConnected ? "" : "Not connected")} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 48, backgroundColor: '#e7e7e7ff' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 12 },
+  container: { flex: 1, paddingTop: 48, backgroundColor: "#e7e7e7ff" },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
   input: {
     flex: 1,
-    borderWidth: 1, borderColor: '#333', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
-    color: '#000', backgroundColor: '#e7e7e7ff',
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#000",
+    backgroundColor: "#e7e7e7ff",
   },
   screenshotButton: {
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#4CAF50",
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#4CAF50',
+    borderColor: "#4CAF50",
   },
   clearButton: {
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#ef4d4dff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#ef4d4dff",
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#ef4d4dff',
+    borderColor: "#ef4d4dff",
   },
   scroll: { flex: 1 },
   scrollInner: { paddingHorizontal: 12, paddingBottom: 24 },
-  text: { color: '#e6e6e6', fontSize: 16, lineHeight: 22, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) },
+  text: {
+    color: "#e6e6e6",
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }),
+  },
 });
