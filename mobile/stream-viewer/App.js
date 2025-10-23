@@ -144,6 +144,17 @@ export default function App() {
     flushScheduledRef.current = false;
   };
 
+  const triggerScreenshot = () => {
+    if (wsRef.current && isConnected) {
+      const commandMessage = JSON.stringify({
+        type: 'command',
+        command: 'screenshot'
+      });
+      wsRef.current.send(commandMessage);
+      console.log('[Frontend] Sent screenshot command');
+    }
+  };
+
   const onScroll = (e) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
     const atBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 12;
@@ -166,18 +177,26 @@ export default function App() {
           <Button title="Connect" onPress={connect} />
         ) : (
           <>
-            <TouchableOpacity 
-              style={styles.clearButton} 
+            <TouchableOpacity
+              style={styles.screenshotButton}
+              onPress={triggerScreenshot}
+              accessible={true}
+              accessibilityLabel="Take screenshot"
+            >
+              <Icon name="photo-camera" size={24} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.clearButton}
               onPress={clearContent}
               accessible={true}
               accessibilityLabel="Clear content"
             >
               <Icon name="delete" size={24} color="#fff" />
             </TouchableOpacity>
-            <Button 
-              title="Disconnect" 
-              onPress={disconnect} 
-              color={Platform.OS === 'ios' ? 'red' : undefined} 
+            <Button
+              title="Disconnect"
+              onPress={disconnect}
+              color={Platform.OS === 'ios' ? 'red' : undefined}
             />
           </>
         )}
@@ -203,6 +222,16 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1, borderColor: '#333', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
     color: '#000', backgroundColor: '#e7e7e7ff',
+  },
+  screenshotButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
   },
   clearButton: {
     width: 44,

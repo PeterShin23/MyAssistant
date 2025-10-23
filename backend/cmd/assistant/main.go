@@ -5,9 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-"github.com/PeterShin23/MyAssistant/backend/internal/key"
-"github.com/PeterShin23/MyAssistant/backend/internal/openai"
-"github.com/PeterShin23/MyAssistant/backend/internal/stream"
+	"github.com/PeterShin23/MyAssistant/backend/internal/capture"
+	"github.com/PeterShin23/MyAssistant/backend/internal/key"
+	"github.com/PeterShin23/MyAssistant/backend/internal/openai"
+	"github.com/PeterShin23/MyAssistant/backend/internal/stream"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -37,6 +38,7 @@ func main() {
 	var pretty bool
 	var wsURL string
 	var wsToken string
+	var silent bool
 
 	var listenCmd = &cobra.Command{
 		Use:   "listen",
@@ -52,23 +54,55 @@ func main() {
 				wsToken = os.Getenv("MYASSISTANT_WS_TOKEN")
 			}
 
-			// Create StreamWriter instances
-			stdoutWriter := stream.NewStdoutWriter(pretty)
-			var writer stream.StreamWriter = stdoutWriter
+			// Validate silent mode requires WebSocket
+			if silent && wsURL == "" {
+				fmt.Println("❌ Error: --silent mode requires --ws-url to be set")
+				fmt.Println("   Silent mode disables terminal output, so WebSocket is required for receiving responses")
+				os.Exit(1)
+			}
 
-			// If WebSocket URL is provided, create a WSWriter and TeeWriter
+			// Create StreamWriter instances
+			var writer stream.StreamWriter
+			var wsWriter *stream.WSWriter
+
+			// If WebSocket URL is provided, create a WSWriter
 			if wsURL != "" {
-				wsWriter := stream.NewWSWriter(wsURL, wsToken)
-				writer = stream.NewTeeWriter(stdoutWriter, wsWriter)
-				
-				// Note: WSWriter now handles its own reconnection loop
-				// No need to call StartReconnectLoop() here anymore
+				wsWriter = stream.NewWSWriter(wsURL, wsToken)
+
+				if silent {
+					// Silent mode: only use WebSocket, no stdout
+					writer = wsWriter
+					fmt.Println("🤫 Silent mode enabled - output only to WebSocket")
+				} else {
+					// Normal mode: use both stdout and WebSocket
+					stdoutWriter := stream.NewStdoutWriter(pretty)
+					writer = stream.NewTeeWriter(stdoutWriter, wsWriter)
+				}
+			} else {
+				// No WebSocket: only stdout
+				stdoutWriter := stream.NewStdoutWriter(pretty)
+				writer = stdoutWriter
 			}
 
 			session, err := openai.NewSession(writer)
 			if err != nil {
 				fmt.Println("Failed to create OpenAI session:", err)
 				os.Exit(1)
+			}
+
+			// Create capture manager for remote screenshot triggers
+			captureManager := capture.NewManager(session)
+
+			// If WebSocket is enabled, set up command handler for remote screenshot triggers
+			if wsWriter != nil {
+				wsWriter.SetCommandHandler(func(command string) {
+					if command == "screenshot" {
+						fmt.Println("📱 Remote screenshot command received")
+						if err := captureManager.TriggerScreenshot(); err != nil {
+							fmt.Printf("❌ Remote screenshot failed: %v\n", err)
+						}
+					}
+				})
 			}
 
 			if err := key.StartKeyListener(session, noAudio, pretty, wsURL, wsToken); err != nil {
@@ -82,6 +116,7 @@ func main() {
 	listenCmd.Flags().BoolVar(&pretty, "pretty", false, "Outputs pretty markdown instead of streamed data")
 	listenCmd.Flags().StringVar(&wsURL, "ws-url", "", "WebSocket URL for streaming output")
 	listenCmd.Flags().StringVar(&wsToken, "ws-token", "", "Authorization token for WebSocket connection")
+	listenCmd.Flags().BoolVar(&silent, "silent", false, "Disable terminal output (requires --ws-url)")
 
 	var clearCmd = &cobra.Command{
 		Use:   "clear",

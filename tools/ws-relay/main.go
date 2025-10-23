@@ -129,13 +129,35 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[viewer] Viewer disconnected from %s (total viewers: %d)", r.RemoteAddr, viewerCount)
 		}()
 
-		// Keep the connection alive
+		// Read messages from viewer and forward to producers
 		for {
-			_, _, err := conn.ReadMessage()
+			messageType, message, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("[viewer] Viewer read error from %s: %v", r.RemoteAddr, err)
 				break
 			}
+
+			// Log incoming message from viewer
+			if messageType == websocket.TextMessage {
+				log.Printf("[viewer] Message received from %s: %s", r.RemoteAddr, string(message))
+			} else {
+				log.Printf("[viewer] Binary message received from %s (size: %d bytes)", r.RemoteAddr, len(message))
+			}
+
+			// Forward message to all producers
+			clientsMu.RLock()
+			producerCount := len(producers)
+			if producerCount > 0 {
+				log.Printf("[viewer] Forwarding to %d producers", producerCount)
+			}
+			for producer := range producers {
+				err := producer.WriteMessage(messageType, message)
+				if err != nil {
+					log.Printf("[viewer] Producer write error: %v", err)
+					// Producer will be removed when its own read loop detects the error
+				}
+			}
+			clientsMu.RUnlock()
 		}
 	}
 }

@@ -18,30 +18,36 @@ type WSMessage struct {
 	Chunk string `json:"chunk"`
 }
 
+// CommandHandler is a callback function for handling commands received via WebSocket
+type CommandHandler func(command string)
+
 // WSWriter implements StreamWriter for writing to a WebSocket
 type WSWriter struct {
-	url       string
-	token     string
-	conn      *websocket.Conn
-	mu        sync.Mutex
-	seq       int64
-	closed    int32 // atomic flag
-	buffer    []WSMessage
-	bufferMu  sync.Mutex
-	bufferMax int
-	dialer    *websocket.Dialer
+	url            string
+	token          string
+	conn           *websocket.Conn
+	mu             sync.Mutex
+	seq            int64
+	closed         int32 // atomic flag
+	buffer         []WSMessage
+	bufferMu       sync.Mutex
+	bufferMax      int
+	dialer         *websocket.Dialer
+	commandHandler CommandHandler
+	readLoopDone   chan struct{}
 }
 
 // NewWSWriter creates a new WSWriter and establishes initial connection
 func NewWSWriter(url, token string) *WSWriter {
 	w := &WSWriter{
-		url:       url,
-		token:     token,
-		buffer:    make([]WSMessage, 0),
-		bufferMax: 100, // Max buffer size
-		dialer:    &websocket.Dialer{},
+		url:          url,
+		token:        token,
+		buffer:       make([]WSMessage, 0),
+		bufferMax:    100, // Max buffer size
+		dialer:       &websocket.Dialer{},
+		readLoopDone: make(chan struct{}),
 	}
-	
+
 	// Establish initial connection immediately
 	if err := w.connect(); err != nil {
 		fmt.Printf("Warning: initial WebSocket connection failed: %v\n", err)
@@ -50,8 +56,15 @@ func NewWSWriter(url, token string) *WSWriter {
 	} else {
 		fmt.Printf("WebSocket connection established to %s\n", url)
 	}
-	
+
 	return w
+}
+
+// SetCommandHandler sets the callback function for handling commands
+func (w *WSWriter) SetCommandHandler(handler CommandHandler) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.commandHandler = handler
 }
 
 // WriteChunk writes a chunk to the WebSocket
@@ -191,7 +204,54 @@ func (w *WSWriter) connect() error {
 	}
 
 	w.conn = conn
+
+	// Start reading messages from the WebSocket
+	w.startReadLoop()
+
 	return nil
+}
+
+// startReadLoop starts a goroutine to read incoming messages from the WebSocket
+func (w *WSWriter) startReadLoop() {
+	go func() {
+		for {
+			// Check if connection is closed
+			w.mu.Lock()
+			conn := w.conn
+			w.mu.Unlock()
+
+			if conn == nil {
+				return // Connection closed, exit read loop
+			}
+
+			// Read message from WebSocket
+			var msg map[string]interface{}
+			err := conn.ReadJSON(&msg)
+			if err != nil {
+				// Connection error, exit read loop
+				// The reconnect loop will handle reconnection
+				fmt.Printf("[WSWriter] Read error: %v\n", err)
+				return
+			}
+
+			// Check if this is a command message
+			if msgType, ok := msg["type"].(string); ok && msgType == "command" {
+				if command, ok := msg["command"].(string); ok {
+					fmt.Printf("[WSWriter] Received command: %s\n", command)
+
+					// Call command handler if set
+					w.mu.Lock()
+					handler := w.commandHandler
+					w.mu.Unlock()
+
+					if handler != nil {
+						// Execute handler in a goroutine to avoid blocking read loop
+						go handler(command)
+					}
+				}
+			}
+		}
+	}()
 }
 
 // flushBuffer sends all buffered messages
