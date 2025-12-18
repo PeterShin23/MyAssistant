@@ -136,3 +136,5 @@ Click the + button and add your terminal (e.g., iTerm or Terminal)
 Ensure the checkbox is checked
 
 Restart the terminal after doing this
+
+<!-- Additional comment appended to README -->
