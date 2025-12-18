@@ -155,7 +155,7 @@ func buildSystemPrompt() string {
 	Assume that the user needs help with the context that's provided to you.
 	Make the best assumption about what the user needs help with.
 	Always validate your own answer.
-	void polite or generic statements like "let me know if you have other questions" or "feel free to ask".
+	Avoid polite or generic statements like "let me know if you have other questions" or "feel free to ask".
 	Only respond with the most relevant, concise, and helpful information.`
 
 	// Load technical user prompt from JSON
