@@ -22,6 +22,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -30,6 +31,7 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/openai/openai-go v1.8.2 // indirect
+	github.com/openai/openai-go/v2 v2.0.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sashabaranov/go-openai v1.40.3 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect

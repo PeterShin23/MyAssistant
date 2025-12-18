@@ -34,3 +34,12 @@ go.work.sum
 # MyAssistant
 .data/*
 rules.json
+
+# mobile
+mobile/stream-viewer/node_modules/
+mobile/stream-viewer/dist/
+mobile/stream-viewer/.expo/
+
+# Markdown
+CONNECTION.md
+CLAUDE.md
