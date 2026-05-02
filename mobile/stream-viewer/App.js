@@ -15,7 +15,7 @@ import MDViewer from "./MDViewer";
 
 const screen = Dimensions.get("screen");
 
-const address = "";
+const address = process.env.EXPO_PUBLIC_WS_HOST;
 
 export default function App() {
   const [wsUrl, setWsUrl] = useState(`ws://${address}:4000/stream?role=viewer`);

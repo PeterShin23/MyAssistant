@@ -75,7 +75,7 @@ function CodeBlock({ code, language, isDark, nodeKey }) {
 }
 
 const MDViewer = memo(function MDViewer({ markdown, maxWidth }) {
-  const isDark = useColorScheme() !== 'light';
+  const isDark = false;
 
   const rules = {
     // ```lang\n ... \n```

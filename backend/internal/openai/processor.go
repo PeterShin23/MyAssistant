@@ -116,7 +116,7 @@ func (s *Session) Process(screenshotPath, audioPath string, pretty bool) error {
 
    params := openai.ChatCompletionNewParams{
      Messages: s.messages,
-     Model:    "gpt-4.1", // shared.ChatModelGPT5Mini,
+     Model:    openai.ChatModelGPT5Nano,
     //  MaxCompletionTokens: openai.Int(4096),
    }
 
